@@ -1,0 +1,202 @@
+---
+name: Docker
+
+# PRs tested and build
+# Merges and tags push to local repo and Dockerhub
+
+on:
+  push:
+    branches:
+      - master
+
+    tags:
+      - v*
+
+  # Run tests for any PRs.
+  pull_request:
+
+env:
+  REPO: "docker.pkg.github.com/opnfv-poc/functest"
+
+jobs:
+  tox:
+    if: github.event_type == 'merge'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment:
+          - docs
+          - pep8
+          - pylint
+          - yamllint
+          - ansiblelint
+          - bashate
+          - bandit
+          - py37
+          - cover
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v1
+        with:
+          python-version: '3.7'
+      - name: Run tests
+        run: |
+          pip install tox
+          tox -e ${{ matrix.environment }}
+  docker-build-core:
+    # needs:
+    #  - tox
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Log into registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u ${{ github.actor }} --password-stdin
+      - name: Build AMD64
+        shell: bash "{0}"
+        run: bash build.sh
+        env:
+          amd64_dirs: "docker/core"
+          arm64_dirs: ""
+          arm_dirs: ""
+  docker-build-core-arm:
+    # needs:
+    #  - tox
+    env:
+      REPO: "docker.pkg.github.com/opnfv-poc/functest"
+      SKIP_ARM: true
+    runs-on: arm
+    steps:
+      - uses: actions/checkout@v2
+        if: env.SKIP_ARM != 'true'
+      - name: Log into registry
+        if: env.SKIP_ARM != 'true'
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u ${{ github.actor }} --password-stdin
+      - name: Build ARM64
+        if: env.SKIP_ARM != 'true'
+        shell: bash "{0}"
+        run: bash build.sh
+        env:
+          amd64_dirs: ""
+          arm64_dirs: "docker/core"
+          arm_dirs: ""
+      - name: Build AARCH
+        if: env.SKIP_ARM != 'true'
+        shell: bash "{0}"
+        run: bash build.sh
+        env:
+          amd64_dirs: ""
+          arm64_dirs: ""
+          arm_dirs: "docker/core"
+  publish-core-manifest:
+    env:
+      SKIP_ARM: true
+    needs:
+      - docker-build-core
+      - docker-build-core-arm
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Manifest Tool
+        if: env.SKIP_ARM != 'true'
+        run: |
+          mkdir -p ~/.local/bin
+          cd ~/.local/bin
+          wget -O manifest-tool https://github.com/estesp/manifest-tool/releases/download/v0.9.0/manifest-tool-linux-amd64
+          chmod 755 manifest-tool
+          echo "::add-path::~/.local/bin"
+      - name: Log into registry
+        if: env.SKIP_ARM != 'true'
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u ${{ github.actor }} --password-stdin
+      # TODO: Determine if pulling images is needed
+      - name: Publish functest-core manifests
+        if: env.SKIP_ARM != 'true'
+        run: >
+          manifest-tool push from-args \
+            --platforms linux/amd64,linux/arm,linux/arm64 \
+            --template ${{ github.repository }}/functest-core:ARCH-latest \
+            --target ${{ github.repository }}/functest-core:latest
+  docker-build-containers:
+    needs:
+      - docker-build-core
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image:
+          - healthcheck
+          - smoke
+          - benchmarking
+          - vnf
+          - smoke-cntt
+          - benchmarking-cntt
+    steps:
+      - uses: actions/checkout@v2
+      - name: Log into registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u ${{ github.actor }} --password-stdin
+      - name: Build AMD64
+        shell: bash "{0}"
+        run: bash build.sh
+        env:
+          amd64_dirs: "docker/${{ matrix.image }}"
+          arm64_dirs: ""
+          arm_dirs: ""
+  docker-build-arm:
+    env:
+      SKIP_ARM: true
+    needs:
+      - docker-build-core-arm
+    runs-on: arm
+    strategy:
+      matrix:
+        image:
+          - healthcheck
+          - smoke
+          - benchmarking
+          - vnf
+          - smoke-cntt
+          - benchmarking-cntt
+    steps:
+      - uses: actions/checkout@v2
+        if: env.SKIP_ARM != 'true'
+      - name: Log into registry
+        if: env.SKIP_ARM != 'true'
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u ${{ github.actor }} --password-stdin
+      - name: Build ARM64
+        if: env.SKIP_ARM != 'true'
+        shell: bash "{0}"
+        run: bash build.sh
+        env:
+          amd64_dirs: ""
+          arm64_dirs: "docker/${{matrix.image}}"
+          arm_dirs: ""
+      - name: Build AARCH
+        if: env.SKIP_ARM != 'true'
+        shell: bash "{0}"
+        run: bash build.sh
+        env:
+          amd64_dirs: ""
+          arm64_dirs: ""
+          arm_dirs: "docker/${{matrix.image}}"
+  publish-container-manifests:
+    env:
+      SKIP_ARM: true
+      REPO: "docker.pkg.github.com/opnfv-poc/functest"
+    runs-on: ubuntu-latest
+    # TODO: Determine if pulling images is needed
+    steps:
+      - name: Install Manifest Tool
+        if: env.SKIP_ARM != 'true'
+        run: |
+          mkdir -p ~/.local/bin
+          cd ~/.local/bin
+          wget -O manifest-tool https://github.com/estesp/manifest-tool/releases/download/v0.9.0/manifest-tool-linux-amd64
+          chmod 755 manifest-tool
+          echo "::add-path::~/.local/bin"
+      - name: Log into registry
+        if: env.SKIP_ARM != 'true'
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u ${{ github.actor }} --password-stdin
+      - name: Publish functest-${{ matrix.image }} manifests
+        if: env.SKIP_ARM != 'true'
+        run: >
+          manifest-tool push from-args \
+            --platforms linux/amd64,linux/arm,linux/arm64 \
+            --template ${{ github.repository }}/functest-${{ matrix.image }}:ARCH-latest \
+            --target ${{ github.repository }}/functest-${{ matrix.image }}:latest
