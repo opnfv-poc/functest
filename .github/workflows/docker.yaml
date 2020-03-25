@@ -37,14 +37,17 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions/setup-python@v1
         with:
-          python-version: '3.x'
+          python-version: '3.7'
+      - uses: actions/setup-python@v1
+        with:
+          python-version: '3.8'
       - name: Run tests
         run: |
           pip install tox
           tox -e ${{ matrix.environment }}
   docker-build-core:
     needs:
-     - tox
+      - tox
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
