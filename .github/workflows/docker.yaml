@@ -78,13 +78,13 @@ jobs:
           amd64_dirs: ""
           arm64_dirs: "docker/core"
           arm_dirs: ""
-      - name: Build AARCH
-        shell: bash "{0}"
-        run: bash build.sh
-        env:
-          amd64_dirs: ""
-          arm64_dirs: ""
-          arm_dirs: "docker/core"
+  #   - name: Build AARCH
+  #     shell: bash "{0}"
+  #     run: bash build.sh
+  #     env:
+  #       amd64_dirs: ""
+  #       arm64_dirs: ""
+  #       arm_dirs: "docker/core"
   publish-core-manifest:
     needs:
       - docker-build-core
@@ -103,8 +103,9 @@ jobs:
       # TODO: Determine if pulling images is needed
       - name: Publish functest-core manifests
         run: >
+          # --platforms linux/amd64,linux/arm,linux/arm64 \
           manifest-tool push from-args \
-            --platforms linux/amd64,linux/arm,linux/arm64 \
+            --platforms linux/amd64,linux/arm64 \
             --template ${{ github.repository }}/functest-core:ARCH-latest \
             --target ${{ github.repository }}/functest-core:latest
 #  docker-build-containers:
