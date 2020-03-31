@@ -1,0 +1,86 @@
+---
+name: Docker
+
+# PRs tested and build
+# Merges and tags push to local repo and Dockerhub
+
+on:
+  push:
+    branches:
+      - master
+
+    tags:
+      - v*
+
+  # Run tests for any PRs.
+  pull_request:
+
+env:
+  REPO: "docker.pkg.github.com/opnfv-poc/functest"
+
+jobs:
+  tox:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        environment:
+          - docs
+          - pep8
+          - pylint
+          - yamllint
+          - ansiblelint
+          - bashate
+          - bandit
+          - py37
+          - cover
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-python@v1
+        with:
+          python-version: '3.7'
+      - uses: actions/setup-python@v1
+        with:
+          python-version: '3.8'
+      - name: Run tests
+        run: |
+          pip install tox
+          tox -e ${{ matrix.environment }}
+  docker-build-core:
+    needs:
+      - tox
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - name: Log into registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u ${{ github.actor }} --password-stdin
+      - name: Build AMD64
+        shell: bash "{0}"
+        run: bash build.sh
+        env:
+          amd64_dirs: "docker/core"
+          arm64_dirs: ""
+          arm_dirs: ""
+  docker-build-containers:
+    needs:
+      - docker-build-core
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        image:
+          - healthcheck
+          - smoke
+          - benchmarking
+          - vnf
+          - smoke-cntt
+          - benchmarking-cntt
+    steps:
+      - uses: actions/checkout@v2
+      - name: Log into registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u ${{ github.actor }} --password-stdin
+      - name: Build AMD64
+        shell: bash "{0}"
+        run: bash build.sh
+        env:
+          amd64_dirs: "docker/${{ matrix.image }}"
+          arm64_dirs: ""
+          arm_dirs: ""
