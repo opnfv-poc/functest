@@ -102,8 +102,8 @@ jobs:
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login docker.pkg.github.com -u ${{ github.actor }} --password-stdin
       # TODO: Determine if pulling images is needed
       - name: Publish functest-core manifests
+        # TODO Once AARCH support returns use: --platforms linux/amd64,linux/arm,linux/arm64
         run: >
-          # --platforms linux/amd64,linux/arm,linux/arm64 \
           manifest-tool push from-args \
             --platforms linux/amd64,linux/arm64 \
             --template ${{ github.repository }}/functest-core:ARCH-latest \
